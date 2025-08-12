@@ -3,8 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTheme } from './contexts/ThemeContext';
 import { HiPaperAirplane, HiSun, HiMoon, HiChatBubbleLeftRight, HiExclamationTriangle, HiArrowPath, HiChartBarSquare, HiEye, HiEyeSlash, HiClock, HiBolt, HiCog6Tooth, HiCpuChip, HiClipboardDocumentList, HiLightBulb } from 'react-icons/hi2';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import Markdown from 'markdown-to-jsx';
 
 interface Message {
   id: string;
@@ -478,7 +477,7 @@ export default function Chat() {
       <header className={`p-4 border-b ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <HiChatBubbleLeftRight className="w-8 h-8 text-blue-900" />
+            <HiChatBubbleLeftRight className={`w-8 h-8 ${theme === 'dark' ? 'text-white' : 'text-blue-900'}`} />
             <h1 className="text-xl font-semibold">LM Chat</h1>
             
             {/* モデル選択 */}
@@ -535,26 +534,32 @@ export default function Chat() {
         {messages.length > 0 && (
           <div className={`px-4 py-2 border-b text-xs ${
             theme === 'dark' 
-              ? 'bg-gray-800 border-gray-700 text-gray-400' 
+              ? 'bg-gray-800 border-gray-700 text-white' 
               : 'bg-gray-50 border-gray-200 text-gray-600'
           }`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <span>{getSessionStats().totalMessages.toLocaleString()}メッセージ</span>
                 <span>{getSessionStats().totalTokens.toLocaleString()}トークン（出力）</span>
-                <span className={`${
-                  getSessionStats().contextTokens / getModelMaxContext(selectedModel) > 0.8 
-                    ? 'text-red-500 dark:text-white font-semibold' 
-                    : getSessionStats().contextTokens / getModelMaxContext(selectedModel) > 0.6
-                    ? 'text-yellow-600 dark:text-gray-200'
-                    : 'text-purple-600 dark:text-gray-300'
-                }`}>
-                  {getSessionStats().contextTokens.toLocaleString()}/{getModelMaxContext(selectedModel).toLocaleString()}コンテキスト
-                </span>
               </div>
               <div className="flex items-center gap-3">
                 <span>{getSessionStats().avgTokensPerSecond.toLocaleString()} t/s</span>
                 <span>{getSessionStats().avgResponseTime.toLocaleString()}ms</span>
+                <span className={`px-3 py-1 rounded-full font-semibold ${
+                  getSessionStats().contextTokens / getModelMaxContext(selectedModel) > 0.8 
+                    ? theme === 'dark' 
+                      ? 'bg-red-500 text-white' 
+                      : 'bg-red-600 text-white'
+                    : getSessionStats().contextTokens / getModelMaxContext(selectedModel) > 0.6
+                    ? theme === 'dark'
+                      ? 'bg-yellow-400 text-black'
+                      : 'bg-yellow-500 text-white'
+                    : theme === 'dark'
+                    ? 'bg-white text-black'
+                    : 'bg-black text-white'
+                }`}>
+                  {getSessionStats().contextTokens.toLocaleString()}/{getModelMaxContext(selectedModel).toLocaleString()}コンテキスト
+                </span>
               </div>
             </div>
           </div>
@@ -662,7 +667,7 @@ export default function Chat() {
                       message.role === 'user'
                         ? 'text-gray-200 border-gray-600'
                         : theme === 'dark' 
-                        ? 'text-gray-400 border-gray-600' 
+                        ? 'text-white border-gray-600' 
                         : 'text-gray-500 border-gray-200'
                     }`}>
                       {/* ユーザーメッセージ: トークン数と時刻を分離 */}
@@ -699,7 +704,9 @@ export default function Chat() {
                             </span>
                             {message.thinking && message.thinking.trim().length > 0 && (
                               <span 
-                                className="cursor-pointer hover:underline text-purple-600 dark:text-gray-200 flex items-center gap-1"
+                                className={`cursor-pointer hover:underline flex items-center gap-1 ${
+                                  theme === 'dark' ? 'text-yellow-300' : 'text-purple-600'
+                                }`}
                                 onClick={() => toggleMessageThinking(message.id)}
                                 title="クリックでThinking内容を表示/非表示"
                               >
@@ -727,7 +734,7 @@ export default function Chat() {
                    showThinkingMessages.has(message.id) && (
                     <div className={`mt-3 p-3 rounded-md border-l-4 ${
                       theme === 'dark' 
-                        ? 'bg-purple-900/20 border-purple-600 text-purple-200' 
+                        ? 'bg-yellow-900/20 border-yellow-400 text-yellow-300' 
                         : 'bg-purple-50 border-purple-400 text-purple-800'
                     }`}>
                       <div className="flex items-center gap-2 mb-2">
@@ -762,81 +769,177 @@ export default function Chat() {
                           <TokenizedText text={preprocessAIContent(message.content)} isDark={theme === 'dark'} />
                         </div>
                       ) : (
-                        <ReactMarkdown
-                          remarkPlugins={[remarkGfm]}
-                          components={{
-                            p: ({children}) => <p className="mb-3 leading-7">{children}</p>,
-                            strong: ({children}) => <strong className="font-semibold text-blue-700 dark:text-blue-200">{children}</strong>,
-                            ul: ({children}) => <ul className="mb-4 space-y-1 list-disc list-inside">{children}</ul>,
-                            ol: ({children}) => <ol className="mb-4 space-y-1 list-decimal list-inside">{children}</ol>,
-                            li: ({children}) => <li className="leading-7 ml-0">{children}</li>,
-                            h1: ({children}) => <h1 className="text-xl font-bold mb-4 text-gray-900 dark:text-gray-100">{children}</h1>,
-                            h2: ({children}) => <h2 className="text-lg font-semibold mb-3 text-gray-900 dark:text-gray-100">{children}</h2>,
-                            h3: ({children}) => <h3 className="text-base font-medium mb-2 text-gray-900 dark:text-gray-100">{children}</h3>,
-                            h4: ({children}) => <h4 className="text-sm font-medium mb-2 text-gray-900 dark:text-gray-100">{children}</h4>,
-                            h5: ({children}) => <h5 className="text-sm font-normal mb-1 text-gray-900 dark:text-gray-100">{children}</h5>,
-                            h6: ({children}) => <h6 className="text-xs font-normal mb-1 text-gray-900 dark:text-gray-100">{children}</h6>,
-                            code: ({children}) => <code className="bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded text-sm font-mono">{children}</code>,
-                            pre: ({children}) => <pre className="bg-gray-100 dark:bg-gray-800 p-3 rounded-lg overflow-x-auto mb-4">{children}</pre>,
-                            blockquote: ({children}) => <blockquote className="border-l-4 border-blue-500 pl-4 italic my-3 text-gray-700 dark:text-gray-300">{children}</blockquote>,
-                            a: ({children, href}) => (
-                              <a 
-                                href={href} 
-                                className="text-blue-600 dark:text-blue-300 hover:text-blue-800 dark:hover:text-blue-100 underline"
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                              >
-                                {children}
-                              </a>
-                            ),
-                            table: ({children}) => (
-                              <div className="overflow-x-auto my-4">
-                                <table className={`min-w-full border-collapse border ${
-                                  theme === 'dark' 
-                                    ? 'border-gray-600 bg-gray-800/50' 
-                                    : 'border-gray-300 bg-white'
-                                }`}>
-                                  {children}
-                                </table>
-                              </div>
-                            ),
-                            thead: ({children}) => (
-                              <thead className={`${
-                                theme === 'dark' ? 'bg-gray-700' : 'bg-gray-50'
-                              }`}>
-                                {children}
-                              </thead>
-                            ),
-                            tbody: ({children}) => <tbody>{children}</tbody>,
-                            tr: ({children}) => (
-                              <tr className={`border-b ${
-                                theme === 'dark' ? 'border-gray-600' : 'border-gray-200'
-                              }`}>
-                                {children}
-                              </tr>
-                            ),
-                            th: ({children}) => (
-                              <th className={`border px-4 py-2 text-left font-semibold ${
-                                theme === 'dark' 
-                                  ? 'border-gray-600 text-gray-100' 
-                                  : 'border-gray-300 text-gray-900'
-                              }`}>
-                                {children}
-                              </th>
-                            ),
-                            td: ({children}) => (
-                              <td className={`border px-4 py-2 ${
-                                theme === 'dark' 
-                                  ? 'border-gray-600 text-gray-200' 
-                                  : 'border-gray-300 text-gray-700'
-                              }`}>
-                                {children}
-                              </td>
-                            ),
+                        <Markdown
+                          options={{
+                            overrides: {
+                              p: {
+                                component: 'p',
+                                props: { className: 'mb-3 leading-7' }
+                              },
+                              strong: {
+                                component: ({children}: any) => (
+                                  <strong className={`font-semibold ${
+                                    theme === 'dark' ? 'text-yellow-400' : 'text-blue-700'
+                                  }`}>
+                                    {children}
+                                  </strong>
+                                )
+                              },
+                              ul: {
+                                component: 'ul',
+                                props: { className: 'mb-4 space-y-1 list-disc list-inside' }
+                              },
+                              ol: {
+                                component: 'ol',
+                                props: { className: 'mb-4 space-y-1 list-decimal list-inside' }
+                              },
+                              li: {
+                                component: 'li',
+                                props: { className: 'leading-7 ml-0' }
+                              },
+                              h1: {
+                                component: ({children}: any) => (
+                                  <h1 className={`text-xl font-bold mb-4 ${
+                                    theme === 'dark' ? 'text-gray-100' : 'text-gray-900'
+                                  }`}>
+                                    {children}
+                                  </h1>
+                                )
+                              },
+                              h2: {
+                                component: ({children}: any) => (
+                                  <h2 className={`text-lg font-semibold mb-3 ${
+                                    theme === 'dark' ? 'text-gray-100' : 'text-gray-900'
+                                  }`}>
+                                    {children}
+                                  </h2>
+                                )
+                              },
+                              h3: {
+                                component: ({children}: any) => (
+                                  <h3 className={`text-base font-medium mb-2 ${
+                                    theme === 'dark' ? 'text-gray-100' : 'text-gray-900'
+                                  }`}>
+                                    {children}
+                                  </h3>
+                                )
+                              },
+                              h4: {
+                                component: ({children}: any) => (
+                                  <h4 className={`text-sm font-medium mb-2 ${
+                                    theme === 'dark' ? 'text-gray-100' : 'text-gray-900'
+                                  }`}>
+                                    {children}
+                                  </h4>
+                                )
+                              },
+                              h5: {
+                                component: ({children}: any) => (
+                                  <h5 className={`text-sm font-normal mb-1 ${
+                                    theme === 'dark' ? 'text-gray-100' : 'text-gray-900'
+                                  }`}>
+                                    {children}
+                                  </h5>
+                                )
+                              },
+                              h6: {
+                                component: ({children}: any) => (
+                                  <h6 className={`text-xs font-normal mb-1 ${
+                                    theme === 'dark' ? 'text-gray-100' : 'text-gray-900'
+                                  }`}>
+                                    {children}
+                                  </h6>
+                                )
+                              },
+                              code: {
+                                component: 'code',
+                                props: { className: 'bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded text-sm font-mono' }
+                              },
+                              pre: {
+                                component: 'pre',
+                                props: { className: 'bg-gray-100 dark:bg-gray-800 p-3 rounded-lg overflow-x-auto mb-4' }
+                              },
+                              blockquote: {
+                                component: 'blockquote',
+                                props: { className: 'border-l-4 border-blue-500 pl-4 italic my-3 text-gray-700 dark:text-gray-300' }
+                              },
+                              a: {
+                                component: ({children, ...props}: any) => (
+                                  <a 
+                                    {...props}
+                                    className="text-blue-600 dark:text-blue-300 hover:text-blue-800 dark:hover:text-blue-100 underline"
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                  >
+                                    {children}
+                                  </a>
+                                )
+                              },
+                              table: {
+                                component: ({children}: any) => (
+                                  <div className="overflow-x-auto my-4">
+                                    <table className={`min-w-full border-collapse border ${
+                                      theme === 'dark' 
+                                        ? 'border-gray-600 bg-gray-800/50' 
+                                        : 'border-gray-300 bg-white'
+                                    }`}>
+                                      {children}
+                                    </table>
+                                  </div>
+                                )
+                              },
+                              thead: {
+                                component: ({children}: any) => (
+                                  <thead className={`${
+                                    theme === 'dark' ? 'bg-gray-700' : 'bg-gray-50'
+                                  }`}>
+                                    {children}
+                                  </thead>
+                                )
+                              },
+                              tbody: {
+                                component: 'tbody'
+                              },
+                              tr: {
+                                component: ({children}: any) => (
+                                  <tr className={`border-b ${
+                                    theme === 'dark' ? 'border-gray-600' : 'border-gray-200'
+                                  }`}>
+                                    {children}
+                                  </tr>
+                                )
+                              },
+                              th: {
+                                component: ({children}: any) => (
+                                  <th className={`border px-4 py-2 text-left font-semibold ${
+                                    theme === 'dark' 
+                                      ? 'border-gray-600 text-gray-100' 
+                                      : 'border-gray-300 text-gray-900'
+                                  }`}>
+                                    {children}
+                                  </th>
+                                )
+                              },
+                              td: {
+                                component: ({children}: any) => (
+                                  <td className={`border px-4 py-2 whitespace-pre-line ${
+                                    theme === 'dark' 
+                                      ? 'border-gray-600 text-gray-200' 
+                                      : 'border-gray-300 text-gray-700'
+                                  }`}>
+                                    {children}
+                                  </td>
+                                )
+                              },
+                              br: {
+                                component: () => <br />
+                              },
+                            },
+                            forceBlock: true,
                           }}
                         >
                           {preprocessAIContent(message.content)}
-                        </ReactMarkdown>
+                        </Markdown>
                       )}
                     </div>
                   )}
@@ -844,7 +947,7 @@ export default function Chat() {
                   {/* AIメッセージの下部: 生成時間と速度 */}
                   {message.role === 'assistant' && showStats && message.metadata && (
                     <div className={`text-xs mt-3 pt-2 border-t flex items-center gap-6 ${
-                      theme === 'dark' ? 'text-gray-400 border-gray-600' : 'text-gray-500 border-gray-200'
+                      theme === 'dark' ? 'text-white border-gray-600' : 'text-gray-500 border-gray-200'
                     }`}>
                       {message.metadata.responseTime !== undefined && (
                         <span>{Math.round(message.metadata.responseTime).toLocaleString()}ms</span>
