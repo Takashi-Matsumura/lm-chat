@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
-import { HiArrowLeft, HiServer, HiCog6Tooth, HiInformationCircle, HiCheckCircle, HiExclamationTriangle } from 'react-icons/hi2';
+import { HiArrowLeft, HiServer, HiCog6Tooth, HiInformationCircle, HiCheckCircle, HiExclamationTriangle, HiGlobeAlt } from 'react-icons/hi2';
 
 export default function Settings() {
   const { theme } = useTheme();
@@ -11,6 +11,14 @@ export default function Settings() {
   const [maxTokens, setMaxTokens] = useState(2000);
   const [connectionStatus, setConnectionStatus] = useState<'checking' | 'connected' | 'error'>('checking');
   const [modelCount, setModelCount] = useState(0);
+  
+  // プロキシ設定
+  const [proxyEnabled, setProxyEnabled] = useState(false);
+  const [proxyHost, setProxyHost] = useState('');
+  const [proxyPort, setProxyPort] = useState(8080);
+  const [proxyUsername, setProxyUsername] = useState('');
+  const [proxyPassword, setProxyPassword] = useState('');
+  const [proxyTestStatus, setProxyTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
 
   // 設定を読み込み
   useEffect(() => {
@@ -18,16 +26,74 @@ export default function Settings() {
     const savedTemp = localStorage.getItem('lm-temperature');
     const savedTokens = localStorage.getItem('lm-max-tokens');
     
+    // プロキシ設定を読み込み
+    const savedProxyEnabled = localStorage.getItem('proxy-enabled');
+    const savedProxyHost = localStorage.getItem('proxy-host');
+    const savedProxyPort = localStorage.getItem('proxy-port');
+    const savedProxyUsername = localStorage.getItem('proxy-username');
+    const savedProxyPassword = localStorage.getItem('proxy-password');
+    
     if (savedUrl) setLmStudioUrl(savedUrl);
     if (savedTemp) setTemperature(parseFloat(savedTemp));
     if (savedTokens) setMaxTokens(parseInt(savedTokens));
+    
+    if (savedProxyEnabled) setProxyEnabled(savedProxyEnabled === 'true');
+    if (savedProxyHost) setProxyHost(savedProxyHost);
+    if (savedProxyPort) setProxyPort(parseInt(savedProxyPort));
+    if (savedProxyUsername) setProxyUsername(savedProxyUsername);
+    if (savedProxyPassword) setProxyPassword(savedProxyPassword);
   }, []);
+
+  // プロキシテスト
+  const testProxy = async () => {
+    if (!proxyEnabled || !proxyHost) return;
+    
+    setProxyTestStatus('testing');
+    try {
+      // プロキシ設定をサーバーに送信してテスト
+      const response = await fetch('/api/proxy-test', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          proxyHost,
+          proxyPort,
+          proxyUsername,
+          proxyPassword,
+        }),
+      });
+      
+      if (response.ok) {
+        setProxyTestStatus('success');
+      } else {
+        setProxyTestStatus('error');
+      }
+    } catch (error) {
+      setProxyTestStatus('error');
+    }
+  };
 
   // 接続テスト
   const testConnection = async () => {
     setConnectionStatus('checking');
     try {
-      const response = await fetch(`/api/models?lmStudioUrl=${encodeURIComponent(lmStudioUrl)}`);
+      // プロキシ設定を含めてテスト
+      const proxyParams = proxyEnabled ? {
+        proxyEnabled: true,
+        proxyHost,
+        proxyPort,
+        proxyUsername,
+        proxyPassword,
+      } : { proxyEnabled: false };
+      
+      const response = await fetch(`/api/models?lmStudioUrl=${encodeURIComponent(lmStudioUrl)}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(proxyParams),
+      });
       const data = await response.json();
       
       if (response.ok && data.models) {
@@ -51,6 +117,14 @@ export default function Settings() {
     localStorage.setItem('lm-studio-url', lmStudioUrl);
     localStorage.setItem('lm-temperature', temperature.toString());
     localStorage.setItem('lm-max-tokens', maxTokens.toString());
+    
+    // プロキシ設定を保存
+    localStorage.setItem('proxy-enabled', proxyEnabled.toString());
+    localStorage.setItem('proxy-host', proxyHost);
+    localStorage.setItem('proxy-port', proxyPort.toString());
+    localStorage.setItem('proxy-username', proxyUsername);
+    localStorage.setItem('proxy-password', proxyPassword);
+    
     alert('設定を保存しました');
   };
 
@@ -134,6 +208,171 @@ export default function Settings() {
                   <span>接続確認中...</span>
                 </>
               )}
+            </div>
+          </div>
+        </div>
+
+        {/* プロキシ設定 */}
+        <div className={`p-6 rounded-lg border ${
+          theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
+        }`}>
+          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <HiGlobeAlt className="w-5 h-5" />
+            プロキシ設定（社内LAN環境用）
+          </h2>
+          
+          <div className="space-y-4">
+            {/* プロキシ有効化 */}
+            <div className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                id="proxy-enabled"
+                checked={proxyEnabled}
+                onChange={(e) => setProxyEnabled(e.target.checked)}
+                className="w-4 h-4 text-blue-900 bg-gray-100 border-gray-300 rounded focus:ring-blue-900"
+              />
+              <label htmlFor="proxy-enabled" className={`text-sm font-medium ${
+                theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
+              }`}>
+                プロキシサーバーを使用する
+              </label>
+            </div>
+
+            {proxyEnabled && (
+              <>
+                {/* プロキシホスト・ポート */}
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="col-span-2">
+                    <label className={`block text-sm font-medium mb-2 ${
+                      theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
+                    }`}>
+                      プロキシホスト
+                    </label>
+                    <input
+                      type="text"
+                      value={proxyHost}
+                      onChange={(e) => setProxyHost(e.target.value)}
+                      placeholder="proxy.company.com"
+                      className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 ${
+                        theme === 'dark'
+                          ? 'bg-gray-700 border-gray-600 text-white'
+                          : 'bg-white border-gray-300 text-gray-900'
+                      }`}
+                    />
+                  </div>
+                  <div>
+                    <label className={`block text-sm font-medium mb-2 ${
+                      theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
+                    }`}>
+                      ポート
+                    </label>
+                    <input
+                      type="number"
+                      value={proxyPort}
+                      onChange={(e) => setProxyPort(parseInt(e.target.value) || 8080)}
+                      placeholder="8080"
+                      className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 ${
+                        theme === 'dark'
+                          ? 'bg-gray-700 border-gray-600 text-white'
+                          : 'bg-white border-gray-300 text-gray-900'
+                      }`}
+                    />
+                  </div>
+                </div>
+
+                {/* プロキシ認証 */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className={`block text-sm font-medium mb-2 ${
+                      theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
+                    }`}>
+                      ユーザー名（オプション）
+                    </label>
+                    <input
+                      type="text"
+                      value={proxyUsername}
+                      onChange={(e) => setProxyUsername(e.target.value)}
+                      className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 ${
+                        theme === 'dark'
+                          ? 'bg-gray-700 border-gray-600 text-white'
+                          : 'bg-white border-gray-300 text-gray-900'
+                      }`}
+                    />
+                  </div>
+                  <div>
+                    <label className={`block text-sm font-medium mb-2 ${
+                      theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
+                    }`}>
+                      パスワード（オプション）
+                    </label>
+                    <input
+                      type="password"
+                      value={proxyPassword}
+                      onChange={(e) => setProxyPassword(e.target.value)}
+                      className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 ${
+                        theme === 'dark'
+                          ? 'bg-gray-700 border-gray-600 text-white'
+                          : 'bg-white border-gray-300 text-gray-900'
+                      }`}
+                    />
+                  </div>
+                </div>
+
+                {/* プロキシテストボタン */}
+                <div className="flex gap-2">
+                  <button
+                    onClick={testProxy}
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                  >
+                    プロキシをテスト
+                  </button>
+                </div>
+
+                {/* プロキシテスト結果 */}
+                {proxyTestStatus !== 'idle' && (
+                  <div className={`p-3 rounded-lg flex items-center gap-2 ${
+                    proxyTestStatus === 'success' 
+                      ? theme === 'dark' ? 'bg-green-900/20 text-green-400' : 'bg-green-50 text-green-700'
+                      : proxyTestStatus === 'error'
+                      ? theme === 'dark' ? 'bg-red-900/20 text-red-400' : 'bg-red-50 text-red-700'
+                      : theme === 'dark' ? 'bg-gray-700 text-gray-400' : 'bg-gray-100 text-gray-600'
+                  }`}>
+                    {proxyTestStatus === 'success' ? (
+                      <>
+                        <HiCheckCircle className="w-5 h-5" />
+                        <span>プロキシ接続成功</span>
+                      </>
+                    ) : proxyTestStatus === 'error' ? (
+                      <>
+                        <HiExclamationTriangle className="w-5 h-5" />
+                        <span>プロキシ接続失敗 - 設定を確認してください</span>
+                      </>
+                    ) : (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current"></div>
+                        <span>プロキシをテスト中...</span>
+                      </>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Docker用の注意書き */}
+            <div className={`p-4 rounded-lg border-l-4 border-blue-500 ${
+              theme === 'dark' ? 'bg-blue-900/20 text-blue-200' : 'bg-blue-50 text-blue-900'
+            }`}>
+              <div className="flex items-start gap-2">
+                <HiInformationCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
+                <div className="text-sm">
+                  <p className="font-medium mb-1">Docker環境での利用について</p>
+                  <p>
+                    DockerコンテナからローカルのLM Studioにアクセスする場合、
+                    LM Studio URLは <code className="bg-gray-200 dark:bg-gray-700 px-1 rounded">host.docker.internal:1234</code> を使用してください。
+                    プロキシが必要な場合は上記設定を有効にしてください。
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
         </div>

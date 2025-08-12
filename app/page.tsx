@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useTheme } from './contexts/ThemeContext';
-import { HiPaperAirplane, HiSun, HiMoon, HiChatBubbleLeftRight, HiExclamationTriangle, HiArrowPath, HiChartBarSquare, HiEye, HiEyeSlash, HiClock, HiBolt, HiCog6Tooth } from 'react-icons/hi2';
+import { HiPaperAirplane, HiSun, HiMoon, HiChatBubbleLeftRight, HiExclamationTriangle, HiArrowPath, HiChartBarSquare, HiEye, HiEyeSlash, HiClock, HiBolt, HiCog6Tooth, HiCpuChip, HiClipboardDocumentList, HiLightBulb } from 'react-icons/hi2';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -10,6 +10,7 @@ interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  thinking?: string; // リーズニングモデルのThinking内容
   metadata?: {
     tokenCount: number;
     responseTime?: number; // ミリ秒
@@ -34,6 +35,7 @@ export default function Chat() {
   const [lmStudioUrl, setLmStudioUrl] = useState('http://localhost:1234/v1');
   const [showStats, setShowStats] = useState(true);
   const [tokenizedMessages, setTokenizedMessages] = useState<Set<string>>(new Set());
+  const [showThinkingMessages, setShowThinkingMessages] = useState<Set<string>>(new Set());
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -105,6 +107,85 @@ export default function Chat() {
     });
   };
 
+  // メッセージのThinking表示を切り替える関数
+  const toggleMessageThinking = (messageId: string) => {
+    setShowThinkingMessages(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(messageId)) {
+        newSet.delete(messageId);
+      } else {
+        newSet.add(messageId);
+      }
+      return newSet;
+    });
+  };
+
+  // モデルの最大コンテキストサイズを取得する関数
+  const getModelMaxContext = (modelId: string): number => {
+    const modelContextSizes: { [key: string]: number } = {
+      // OpenAI models
+      'gpt-4': 8192,
+      'gpt-4-32k': 32768,
+      'gpt-4-turbo': 128000,
+      'gpt-4o': 128000,
+      'gpt-3.5-turbo': 4096,
+      'gpt-3.5-turbo-16k': 16384,
+      
+      // GPT-OSS models
+      'openai/gpt-oss-20b': 8192,
+      'openai/gpt-oss': 8192,
+      
+      // Gemma models
+      'gemma-2-2b-it': 8192,
+      'gemma-2-9b-it': 8192,
+      'gemma-2-27b-it': 8192,
+      
+      // Llama models
+      'llama-2-7b': 4096,
+      'llama-2-13b': 4096,
+      'llama-2-70b': 4096,
+      'llama-3-8b': 8192,
+      'llama-3-70b': 8192,
+      
+      // Mistral models
+      'mistral-7b': 8192,
+      'mistral-8x7b': 32768,
+      
+      // Claude models (if available)
+      'claude-3-haiku': 200000,
+      'claude-3-sonnet': 200000,
+      'claude-3-opus': 200000,
+    };
+    
+    // 完全一致を探す
+    if (modelContextSizes[modelId]) {
+      return modelContextSizes[modelId];
+    }
+    
+    // 部分一致を探す
+    for (const [key, value] of Object.entries(modelContextSizes)) {
+      if (modelId.toLowerCase().includes(key.toLowerCase()) || 
+          key.toLowerCase().includes(modelId.toLowerCase())) {
+        return value;
+      }
+    }
+    
+    // デフォルト値
+    return 4096;
+  };
+
+  // AIの回答内容を読みやすく前処理する関数
+  const preprocessAIContent = (content: string): string => {
+    return content
+      // <br>タグを改行に変換
+      .replace(/<br\s*\/?>/gi, '\n')
+      // HTMLタグを除去
+      .replace(/<[^>]*>/g, '')
+      // 連続する改行を適度に調整
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  };
+
   // トークンごとの色生成
   const getTokenColor = (index: number, isDark: boolean = false): string => {
     const colors = [
@@ -160,10 +241,14 @@ export default function Chat() {
       ? assistantMessages.reduce((sum, m) => sum + (m.metadata?.tokensPerSecond || 0), 0) / assistantMessages.length 
       : 0;
 
+    // コンテキストウィンドウのトークン数計算
+    const contextTokens = messages.reduce((sum, m) => sum + estimateTokens(m.content), 0);
+
     return {
       totalMessages: messages.length,
       assistantMessages: assistantMessages.length,
       totalTokens,
+      contextTokens,
       avgResponseTime: Math.round(avgResponseTime),
       avgTokensPerSecond: Math.round(avgTokensPerSecond * 10) / 10,
     };
@@ -253,6 +338,15 @@ export default function Chat() {
     const startTime = Date.now();
     
     try {
+      console.log('Sending request with model:', selectedModel);
+      
+      // プロキシ設定を取得
+      const proxyEnabled = localStorage.getItem('proxy-enabled') === 'true';
+      const proxyHost = localStorage.getItem('proxy-host') || '';
+      const proxyPort = parseInt(localStorage.getItem('proxy-port') || '8080');
+      const proxyUsername = localStorage.getItem('proxy-username') || '';
+      const proxyPassword = localStorage.getItem('proxy-password') || '';
+      
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: {
@@ -262,6 +356,11 @@ export default function Chat() {
           messages: [...messages, userMessage],
           model: selectedModel,
           lmStudioUrl,
+          proxyEnabled,
+          proxyHost,
+          proxyPort,
+          proxyUsername,
+          proxyPassword,
         }),
       });
 
@@ -275,10 +374,12 @@ export default function Chat() {
       }
 
       let assistantContent = '';
+      let assistantThinking = '';
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: '',
+        thinking: '',
         metadata: {
           tokenCount: 0,
           responseTime: 0,
@@ -306,8 +407,15 @@ export default function Chat() {
 
             try {
               const parsed = JSON.parse(data);
-              if (parsed.content) {
-                assistantContent += parsed.content;
+              if (parsed.content || parsed.thinking) {
+                if (parsed.content) {
+                  assistantContent += parsed.content;
+                }
+                if (parsed.thinking) {
+                  console.log('Received thinking:', parsed.thinking);
+                  assistantThinking += parsed.thinking;
+                }
+                
                 tokenCount = estimateTokens(assistantContent);
                 
                 const currentTime = Date.now();
@@ -319,6 +427,7 @@ export default function Chat() {
                     ? { 
                         ...msg, 
                         content: assistantContent,
+                        thinking: assistantThinking,
                         metadata: {
                           tokenCount,
                           responseTime,
@@ -344,6 +453,8 @@ export default function Chat() {
         msg.id === assistantMessage.id
           ? { 
               ...msg,
+              content: assistantContent,
+              thinking: assistantThinking,
               metadata: {
                 tokenCount,
                 responseTime: finalResponseTime,
@@ -395,9 +506,10 @@ export default function Chat() {
             <button
               onClick={() => {
                 setShowStats(!showStats);
-                // メタデータを非表示にする場合、全てのトークン分けをリセット
+                // メタデータを非表示にする場合、全てのトークン分けとThinking表示をリセット
                 if (showStats) {
                   setTokenizedMessages(new Set());
+                  setShowThinkingMessages(new Set());
                 }
               }}
               className={`p-2 rounded-lg transition-colors ${
@@ -429,7 +541,16 @@ export default function Chat() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <span>{getSessionStats().totalMessages.toLocaleString()}メッセージ</span>
-                <span>{getSessionStats().totalTokens.toLocaleString()}トークン</span>
+                <span>{getSessionStats().totalTokens.toLocaleString()}トークン（出力）</span>
+                <span className={`${
+                  getSessionStats().contextTokens / getModelMaxContext(selectedModel) > 0.8 
+                    ? 'text-red-500 dark:text-white font-semibold' 
+                    : getSessionStats().contextTokens / getModelMaxContext(selectedModel) > 0.6
+                    ? 'text-yellow-600 dark:text-gray-200'
+                    : 'text-purple-600 dark:text-gray-300'
+                }`}>
+                  {getSessionStats().contextTokens.toLocaleString()}/{getModelMaxContext(selectedModel).toLocaleString()}コンテキスト
+                </span>
               </div>
               <div className="flex items-center gap-3">
                 <span>{getSessionStats().avgTokensPerSecond.toLocaleString()} t/s</span>
@@ -474,25 +595,47 @@ export default function Chat() {
 
             {/* 学習用説明エリア */}
             <div className={`p-6 rounded-lg border-l-4 border-blue-900 text-left ${
-              theme === 'dark' ? 'bg-blue-900/20 text-blue-200' : 'bg-blue-50 text-blue-900'
+              theme === 'dark' ? 'bg-blue-900/20 text-gray-200' : 'bg-blue-50 text-blue-900'
             }`}>
               <h3 className="font-semibold mb-3 flex items-center gap-2">
                 <HiChartBarSquare className="w-5 h-5" />
                 AI学習機能について
               </h3>
               <div className="space-y-2 text-sm">
-                <p><strong>📊 メタデータ表示:</strong> 各メッセージのトークン数、応答時間、生成速度をリアルタイムで確認できます</p>
-                <p><strong>⚡ 生成速度:</strong> token/s（tokens per second）でAIの処理性能を学習できます</p>
-                <p><strong>🕒 応答時間:</strong> 質問送信から完了までの時間をミリ秒単位で表示します</p>
-                <p><strong>📈 セッション統計:</strong> ヘッダーで全体の統計情報を確認できます</p>
-                <p><strong>👁️ 表示切替:</strong> 右上のアイコンでメタデータの表示/非表示を切り替えできます</p>
+                <p className="flex items-start gap-3">
+                  <span className="w-1.5 h-1.5 bg-black dark:bg-white rounded-full mt-2 flex-shrink-0"></span>
+                  <span><strong>メタデータ表示:</strong> 各メッセージのトークン数、応答時間、生成速度をリアルタイムで確認できます</span>
+                </p>
+                <p className="flex items-start gap-3">
+                  <span className="w-1.5 h-1.5 bg-black dark:bg-white rounded-full mt-2 flex-shrink-0"></span>
+                  <span><strong>生成速度:</strong> token/s（tokens per second）でAIの処理性能を学習できます</span>
+                </p>
+                <p className="flex items-start gap-3">
+                  <span className="w-1.5 h-1.5 bg-black dark:bg-white rounded-full mt-2 flex-shrink-0"></span>
+                  <span><strong>応答時間:</strong> 質問送信から完了までの時間をミリ秒単位で表示します</span>
+                </p>
+                <p className="flex items-start gap-3">
+                  <span className="w-1.5 h-1.5 bg-black dark:bg-white rounded-full mt-2 flex-shrink-0"></span>
+                  <span><strong>コンテキストウィンドウ:</strong> 「現在/最大」形式で表示。モデルが処理できる文脈の限界とともに現在の使用量を紫色で表示します</span>
+                </p>
+                <p className="flex items-start gap-3">
+                  <span className="w-1.5 h-1.5 bg-black dark:bg-white rounded-full mt-2 flex-shrink-0"></span>
+                  <span><strong>セッション統計:</strong> ヘッダーで全体の統計情報を確認できます</span>
+                </p>
+                <p className="flex items-start gap-3">
+                  <span className="w-1.5 h-1.5 bg-black dark:bg-white rounded-full mt-2 flex-shrink-0"></span>
+                  <span><strong>表示切替:</strong> 右上のアイコンでメタデータの表示/非表示を切り替えできます</span>
+                </p>
               </div>
               <div className={`mt-4 p-3 rounded ${
                 theme === 'dark' ? 'bg-gray-800/50' : 'bg-white/50'
               }`}>
-                <p className="text-xs opacity-75">
-                  <strong>💡 学習のコツ:</strong> 
-                  同じ質問を複数回試したり、質問の長さを変えて応答時間やトークン数の変化を観察してみましょう！
+                <p className="text-xs opacity-75 flex items-start gap-2">
+                  <HiLightBulb className="w-3 h-3 mt-0.5 text-yellow-500 flex-shrink-0" />
+                  <span>
+                    <strong>学習のコツ:</strong> 
+                    同じ質問を複数回試したり、質問の長さを変えて応答時間やトークン数の変化を観察してみましょう！また、会話が長くなるにつれてコンテキストトークン数が増加し、LLMの動作にどう影響するかも注目してください。
+                  </span>
                 </p>
               </div>
             </div>
@@ -517,7 +660,7 @@ export default function Chat() {
                   {showStats && message.metadata && (
                     <div className={`text-xs mb-2 pb-2 border-b ${
                       message.role === 'user'
-                        ? 'text-blue-100 border-blue-700'
+                        ? 'text-gray-200 border-gray-600'
                         : theme === 'dark' 
                         ? 'text-gray-400 border-gray-600' 
                         : 'text-gray-500 border-gray-200'
@@ -554,6 +697,16 @@ export default function Chat() {
                             >
                               {message.metadata.tokenCount.toLocaleString()} tokens
                             </span>
+                            {message.thinking && message.thinking.trim().length > 0 && (
+                              <span 
+                                className="cursor-pointer hover:underline text-purple-600 dark:text-gray-200 flex items-center gap-1"
+                                onClick={() => toggleMessageThinking(message.id)}
+                                title="クリックでThinking内容を表示/非表示"
+                              >
+                                <HiCpuChip className="w-4 h-4" />
+                                thinking
+                              </span>
+                            )}
                           </div>
                           <span className="opacity-60">
                             {new Date(message.metadata.timestamp).toLocaleTimeString('ja-JP', {
@@ -567,6 +720,30 @@ export default function Chat() {
                     </div>
                   )}
 
+                  {/* Thinking内容（展開時のみ表示） */}
+                  {message.role === 'assistant' && 
+                   message.thinking && 
+                   message.thinking.trim().length > 0 && 
+                   showThinkingMessages.has(message.id) && (
+                    <div className={`mt-3 p-3 rounded-md border-l-4 ${
+                      theme === 'dark' 
+                        ? 'bg-purple-900/20 border-purple-600 text-purple-200' 
+                        : 'bg-purple-50 border-purple-400 text-purple-800'
+                    }`}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <HiCpuChip className="w-4 h-4" />
+                        <span className="text-sm font-medium">Thinking Process</span>
+                      </div>
+                      <div className="text-sm whitespace-pre-wrap">
+                        {tokenizedMessages.has(message.id) ? (
+                          <TokenizedText text={preprocessAIContent(message.thinking)} isDark={theme === 'dark'} />
+                        ) : (
+                          preprocessAIContent(message.thinking)
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   {/* メッセージ内容 */}
                   {message.role === 'user' ? (
                     <div className="whitespace-pre-wrap">
@@ -577,16 +754,88 @@ export default function Chat() {
                       )}
                     </div>
                   ) : (
-                    <div className={`prose prose-sm max-w-none ${theme === 'dark' ? 'text-gray-100' : 'text-gray-800'}`}>
+                    <div className={`prose prose-sm max-w-none ${
+                      theme === 'dark' ? 'text-gray-50' : 'text-gray-800'
+                    }`}>
                       {tokenizedMessages.has(message.id) ? (
                         <div className="whitespace-pre-wrap">
-                          <TokenizedText text={message.content} isDark={theme === 'dark'} />
+                          <TokenizedText text={preprocessAIContent(message.content)} isDark={theme === 'dark'} />
                         </div>
                       ) : (
                         <ReactMarkdown
                           remarkPlugins={[remarkGfm]}
+                          components={{
+                            p: ({children}) => <p className="mb-3 leading-7">{children}</p>,
+                            strong: ({children}) => <strong className="font-semibold text-blue-700 dark:text-blue-200">{children}</strong>,
+                            ul: ({children}) => <ul className="mb-4 space-y-1 list-disc list-inside">{children}</ul>,
+                            ol: ({children}) => <ol className="mb-4 space-y-1 list-decimal list-inside">{children}</ol>,
+                            li: ({children}) => <li className="leading-7 ml-0">{children}</li>,
+                            h1: ({children}) => <h1 className="text-xl font-bold mb-4 text-gray-900 dark:text-gray-100">{children}</h1>,
+                            h2: ({children}) => <h2 className="text-lg font-semibold mb-3 text-gray-900 dark:text-gray-100">{children}</h2>,
+                            h3: ({children}) => <h3 className="text-base font-medium mb-2 text-gray-900 dark:text-gray-100">{children}</h3>,
+                            h4: ({children}) => <h4 className="text-sm font-medium mb-2 text-gray-900 dark:text-gray-100">{children}</h4>,
+                            h5: ({children}) => <h5 className="text-sm font-normal mb-1 text-gray-900 dark:text-gray-100">{children}</h5>,
+                            h6: ({children}) => <h6 className="text-xs font-normal mb-1 text-gray-900 dark:text-gray-100">{children}</h6>,
+                            code: ({children}) => <code className="bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded text-sm font-mono">{children}</code>,
+                            pre: ({children}) => <pre className="bg-gray-100 dark:bg-gray-800 p-3 rounded-lg overflow-x-auto mb-4">{children}</pre>,
+                            blockquote: ({children}) => <blockquote className="border-l-4 border-blue-500 pl-4 italic my-3 text-gray-700 dark:text-gray-300">{children}</blockquote>,
+                            a: ({children, href}) => (
+                              <a 
+                                href={href} 
+                                className="text-blue-600 dark:text-blue-300 hover:text-blue-800 dark:hover:text-blue-100 underline"
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                              >
+                                {children}
+                              </a>
+                            ),
+                            table: ({children}) => (
+                              <div className="overflow-x-auto my-4">
+                                <table className={`min-w-full border-collapse border ${
+                                  theme === 'dark' 
+                                    ? 'border-gray-600 bg-gray-800/50' 
+                                    : 'border-gray-300 bg-white'
+                                }`}>
+                                  {children}
+                                </table>
+                              </div>
+                            ),
+                            thead: ({children}) => (
+                              <thead className={`${
+                                theme === 'dark' ? 'bg-gray-700' : 'bg-gray-50'
+                              }`}>
+                                {children}
+                              </thead>
+                            ),
+                            tbody: ({children}) => <tbody>{children}</tbody>,
+                            tr: ({children}) => (
+                              <tr className={`border-b ${
+                                theme === 'dark' ? 'border-gray-600' : 'border-gray-200'
+                              }`}>
+                                {children}
+                              </tr>
+                            ),
+                            th: ({children}) => (
+                              <th className={`border px-4 py-2 text-left font-semibold ${
+                                theme === 'dark' 
+                                  ? 'border-gray-600 text-gray-100' 
+                                  : 'border-gray-300 text-gray-900'
+                              }`}>
+                                {children}
+                              </th>
+                            ),
+                            td: ({children}) => (
+                              <td className={`border px-4 py-2 ${
+                                theme === 'dark' 
+                                  ? 'border-gray-600 text-gray-200' 
+                                  : 'border-gray-300 text-gray-700'
+                              }`}>
+                                {children}
+                              </td>
+                            ),
+                          }}
                         >
-                          {message.content}
+                          {preprocessAIContent(message.content)}
                         </ReactMarkdown>
                       )}
                     </div>

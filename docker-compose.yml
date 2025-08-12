@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  lm-chat:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - LM_STUDIO_URL=http://host.docker.internal:1234/v1
+    networks:
+      - lm-chat-network
+    restart: unless-stopped
+    
+  # 開発用の設定
+  lm-chat-dev:
+    build: .
+    ports:
+      - "3001:3000"
+    environment:
+      - NODE_ENV=development
+      - LM_STUDIO_URL=http://host.docker.internal:1234/v1
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+    command: npm run dev
+    networks:
+      - lm-chat-network
+    profiles:
+      - dev
+
+networks:
+  lm-chat-network:
+    driver: bridge
+
+# プロキシ環境での使用例
+# services:
+#   lm-chat-proxy:
+#     build: .
+#     ports:
+#       - "3000:3000"
+#     environment:
+#       - NODE_ENV=production
+#       - LM_STUDIO_URL=http://host.docker.internal:1234/v1
+#       - HTTP_PROXY=http://proxy.company.com:8080
+#       - HTTPS_PROXY=http://proxy.company.com:8080
+#       - NO_PROXY=localhost,127.0.0.1,host.docker.internal
+#     networks:
+#       - lm-chat-network
