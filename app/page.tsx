@@ -9,7 +9,9 @@ interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  model?: string; // このメッセージを生成したLLMモデル名
   thinking?: string; // リーズニングモデルのThinking内容
+  reasoning?: string; // gpt-ossモデルのreasoning内容
   metadata?: {
     tokenCount: number;
     responseTime?: number; // ミリ秒
@@ -31,7 +33,11 @@ export default function Chat() {
   const [models, setModels] = useState<Model[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [error, setError] = useState<string>('');
-  const [lmStudioUrl, setLmStudioUrl] = useState('http://localhost:1234/v1');
+  // Docker環境では環境変数から、通常環境ではlocalhostを使用
+  const defaultUrl = typeof window !== 'undefined' && window.location.hostname !== 'localhost' 
+    ? 'http://host.docker.internal:1234/v1'
+    : 'http://localhost:1234/v1';
+  const [lmStudioUrl, setLmStudioUrl] = useState(defaultUrl);
   const [showStats, setShowStats] = useState(true);
   const [tokenizedMessages, setTokenizedMessages] = useState<Set<string>>(new Set());
   const [showThinkingMessages, setShowThinkingMessages] = useState<Set<string>>(new Set());
@@ -374,11 +380,14 @@ export default function Chat() {
 
       let assistantContent = '';
       let assistantThinking = '';
+      let assistantReasoning = '';
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: '',
+        model: selectedModel, // 使用したモデル名を保存
         thinking: '',
+        reasoning: '',
         metadata: {
           tokenCount: 0,
           responseTime: 0,
@@ -406,13 +415,17 @@ export default function Chat() {
 
             try {
               const parsed = JSON.parse(data);
-              if (parsed.content || parsed.thinking) {
+              if (parsed.content || parsed.thinking || parsed.reasoning) {
                 if (parsed.content) {
                   assistantContent += parsed.content;
                 }
                 if (parsed.thinking) {
                   console.log('Received thinking:', parsed.thinking);
                   assistantThinking += parsed.thinking;
+                }
+                if (parsed.reasoning) {
+                  console.log('Received reasoning:', parsed.reasoning);
+                  assistantReasoning += parsed.reasoning;
                 }
                 
                 tokenCount = estimateTokens(assistantContent);
@@ -427,6 +440,7 @@ export default function Chat() {
                         ...msg, 
                         content: assistantContent,
                         thinking: assistantThinking,
+                        reasoning: assistantReasoning,
                         metadata: {
                           tokenCount,
                           responseTime,
@@ -454,6 +468,7 @@ export default function Chat() {
               ...msg,
               content: assistantContent,
               thinking: assistantThinking,
+              reasoning: assistantReasoning,
               metadata: {
                 tokenCount,
                 responseTime: finalResponseTime,
@@ -694,7 +709,7 @@ export default function Chat() {
                       {message.role === 'assistant' && (
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-4">
-                            <span className="font-medium">{selectedModel || 'Unknown Model'}</span>
+                            <span className="font-medium">{message.model || 'Unknown Model'}</span>
                             <span 
                               className="cursor-pointer hover:underline"
                               onClick={() => toggleMessageTokenization(message.id)}
@@ -712,6 +727,18 @@ export default function Chat() {
                               >
                                 <HiCpuChip className="w-4 h-4" />
                                 thinking
+                              </span>
+                            )}
+                            {message.reasoning && message.reasoning.trim().length > 0 && (
+                              <span 
+                                className={`cursor-pointer hover:underline flex items-center gap-1 ${
+                                  theme === 'dark' ? 'text-cyan-300' : 'text-cyan-600'
+                                }`}
+                                onClick={() => toggleMessageThinking(message.id)}
+                                title="クリックでReasoning内容を表示/非表示"
+                              >
+                                <HiLightBulb className="w-4 h-4" />
+                                reasoning
                               </span>
                             )}
                           </div>
@@ -746,6 +773,30 @@ export default function Chat() {
                           <TokenizedText text={preprocessAIContent(message.thinking)} isDark={theme === 'dark'} />
                         ) : (
                           preprocessAIContent(message.thinking)
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Reasoning内容（展開時のみ表示） */}
+                  {message.role === 'assistant' && 
+                   message.reasoning && 
+                   message.reasoning.trim().length > 0 && 
+                   showThinkingMessages.has(message.id) && (
+                    <div className={`mt-3 p-3 rounded-md border-l-4 ${
+                      theme === 'dark' 
+                        ? 'bg-cyan-900/20 border-cyan-400 text-cyan-300' 
+                        : 'bg-cyan-50 border-cyan-400 text-cyan-800'
+                    }`}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <HiLightBulb className="w-4 h-4" />
+                        <span className="text-sm font-medium">Reasoning Process</span>
+                      </div>
+                      <div className="text-sm whitespace-pre-wrap">
+                        {tokenizedMessages.has(message.id) ? (
+                          <TokenizedText text={preprocessAIContent(message.reasoning)} isDark={theme === 'dark'} />
+                        ) : (
+                          preprocessAIContent(message.reasoning)
                         )}
                       </div>
                     </div>

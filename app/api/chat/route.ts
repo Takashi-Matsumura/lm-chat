@@ -58,12 +58,6 @@ export async function POST(req: NextRequest) {
       temperature,
       max_tokens,
       stream,
-      // リーズニングモデル用の設定を追加
-      ...(model.includes('gpt-oss') && {
-        reasoning: true,
-        include_thinking: true,
-        stream_reasoning: true,
-      }),
     });
 
     if (stream) {
@@ -83,24 +77,15 @@ export async function POST(req: NextRequest) {
               
               const delta = chunk.choices?.[0]?.delta;
               const content = delta?.content || '';
-              const thinking = delta?.thinking || '';
-              
-              // リーズニングモデルでは異なるフィールドが使われる可能性をチェック
-              const reasoningContent = delta?.reasoning || '';
-              const thoughtContent = delta?.thought || '';
+              const reasoning = delta?.reasoning || '';
               
               // デバッグログ
-              if (thinking || reasoningContent || thoughtContent) {
-                console.log('Received thinking/reasoning data:', {
-                  thinking,
-                  reasoning: reasoningContent,
-                  thought: thoughtContent
-                });
+              if (reasoning) {
+                console.log('Received reasoning data:', reasoning);
               }
               
-              if (content || thinking || reasoningContent || thoughtContent) {
-                const combinedThinking = thinking || reasoningContent || thoughtContent;
-                const data = JSON.stringify({ content, thinking: combinedThinking });
+              if (content || reasoning) {
+                const data = JSON.stringify({ content, reasoning });
                 controller.enqueue(encoder.encode(`data: ${data}\n\n`));
               }
             }
@@ -123,7 +108,18 @@ export async function POST(req: NextRequest) {
       });
     } else {
       // 非ストリーミングレスポンス
-      return Response.json(response);
+      // gpt-oss モデルの場合、reasoning フィールドを含む
+      const formattedResponse = {
+        ...response,
+        choices: response.choices.map((choice: any) => ({
+          ...choice,
+          message: {
+            ...choice.message,
+            reasoning: choice.message?.reasoning || choice.reasoning || '',
+          },
+        })),
+      };
+      return Response.json(formattedResponse);
     }
   } catch (error) {
     console.error('Chat API error:', error);

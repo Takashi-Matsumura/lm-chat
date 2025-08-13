@@ -6,7 +6,11 @@ import { HiArrowLeft, HiServer, HiCog6Tooth, HiInformationCircle, HiCheckCircle,
 
 export default function Settings() {
   const { theme } = useTheme();
-  const [lmStudioUrl, setLmStudioUrl] = useState('http://localhost:1234/v1');
+  // Docker環境では環境変数から、通常環境ではlocalhostを使用
+  const defaultUrl = typeof window !== 'undefined' && window.location.hostname !== 'localhost' 
+    ? 'http://host.docker.internal:1234/v1'
+    : 'http://localhost:1234/v1';
+  const [lmStudioUrl, setLmStudioUrl] = useState(defaultUrl);
   const [temperature, setTemperature] = useState(0.7);
   const [maxTokens, setMaxTokens] = useState(2000);
   const [connectionStatus, setConnectionStatus] = useState<'checking' | 'connected' | 'error'>('checking');
@@ -33,7 +37,16 @@ export default function Settings() {
     const savedProxyUsername = localStorage.getItem('proxy-username');
     const savedProxyPassword = localStorage.getItem('proxy-password');
     
-    if (savedUrl) setLmStudioUrl(savedUrl);
+    // Docker環境では保存されたURLがlocalhostの場合、host.docker.internalに変換
+    if (savedUrl) {
+      if (window.location.hostname !== 'localhost' && savedUrl.includes('localhost:1234')) {
+        const dockerUrl = savedUrl.replace('localhost:1234', 'host.docker.internal:1234');
+        setLmStudioUrl(dockerUrl);
+        localStorage.setItem('lm-studio-url', dockerUrl);
+      } else {
+        setLmStudioUrl(savedUrl);
+      }
+    }
     if (savedTemp) setTemperature(parseFloat(savedTemp));
     if (savedTokens) setMaxTokens(parseInt(savedTokens));
     

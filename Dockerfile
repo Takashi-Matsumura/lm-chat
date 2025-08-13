@@ -7,14 +7,17 @@ WORKDIR /app
 # package.json と package-lock.json をコピー
 COPY package*.json ./
 
-# 依存関係をインストール
-RUN npm ci --only=production
+# 依存関係をインストール（ビルドに必要な開発依存関係も含む）
+RUN npm ci
 
 # アプリケーションのソースコードをコピー
 COPY . .
 
 # Next.js アプリケーションをビルド
 RUN npm run build
+
+# 本番用の依存関係のみを残す（TypeScriptは必要なので残す）
+RUN npm prune --production && npm install typescript
 
 # アプリケーションを起動するユーザーを作成
 RUN addgroup --system --gid 1001 nodejs
@@ -24,12 +27,13 @@ RUN adduser --system --uid 1001 nextjs
 RUN chown -R nextjs:nodejs /app
 USER nextjs
 
-# ポート3000を公開
-EXPOSE 3000
+# ポート8888を公開
+EXPOSE 8888
 
 # 環境変数を設定
 ENV NODE_ENV=production
-ENV PORT=3000
+ENV PORT=8888
+ENV HOSTNAME=0.0.0.0
 
 # アプリケーションを起動
 CMD ["npm", "start"]
