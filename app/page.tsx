@@ -4,6 +4,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useTheme } from './contexts/ThemeContext';
 import { HiPaperAirplane, HiSun, HiMoon, HiChatBubbleLeftRight, HiExclamationTriangle, HiArrowPath, HiChartBarSquare, HiEye, HiEyeSlash, HiClock, HiBolt, HiCog6Tooth, HiCpuChip, HiClipboardDocumentList, HiLightBulb } from 'react-icons/hi2';
 import Markdown from 'markdown-to-jsx';
+import { getCurrentLMStudioUrl, getCurrentEnvironment, saveEnvironment, testEnvironmentConnection, getEnvironmentUrl, type Environment } from '@/lib/lm-studio-config';
+import EnvironmentDialog from './components/EnvironmentDialog';
 
 interface Message {
   id: string;
@@ -33,11 +35,10 @@ export default function Chat() {
   const [models, setModels] = useState<Model[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [error, setError] = useState<string>('');
-  // Docker環境では環境変数から、通常環境ではlocalhostを使用
-  const defaultUrl = typeof window !== 'undefined' && window.location.hostname !== 'localhost' 
-    ? 'http://host.docker.internal:1234/v1'
-    : 'http://localhost:1234/v1';
-  const [lmStudioUrl, setLmStudioUrl] = useState(defaultUrl);
+  // 環境設定関連の状態
+  const [currentEnvironment, setCurrentEnvironment] = useState<Environment>(() => getCurrentEnvironment());
+  const [showEnvironmentDialog, setShowEnvironmentDialog] = useState(false);
+  const [connectionTested, setConnectionTested] = useState(false);
   const [showStats, setShowStats] = useState(true);
   const [tokenizedMessages, setTokenizedMessages] = useState<Set<string>>(new Set());
   const [showThinkingMessages, setShowThinkingMessages] = useState<Set<string>>(new Set());
@@ -259,27 +260,71 @@ export default function Chat() {
     };
   };
 
-  // モデル一覧を取得
+  // 起動時の接続テストとモデル取得
   useEffect(() => {
-    const fetchModels = async () => {
+    const initializeConnection = async () => {
+      if (connectionTested) return;
+
       try {
-        const response = await fetch(`/api/models?lmStudioUrl=${encodeURIComponent(lmStudioUrl)}`);
-        const data = await response.json();
+        // 現在の環境設定で接続テスト
+        const success = await testEnvironmentConnection(currentEnvironment);
         
-        if (data.models && data.models.length > 0) {
-          setModels(data.models);
-          setSelectedModel(data.models[0].id);
-          setError('');
+        if (success) {
+          // 成功した場合はモデルを取得
+          await fetchModels(currentEnvironment);
+          setConnectionTested(true);
         } else {
-          setError('LM Studio からモデルを読み込めませんでした。LM Studio が起動していることを確認してください。');
+          // 失敗した場合は別の環境でテスト
+          const alternativeEnv: Environment = currentEnvironment === 'development' ? 'container' : 'development';
+          const alternativeSuccess = await testEnvironmentConnection(alternativeEnv);
+          
+          if (alternativeSuccess) {
+            // 別の環境で成功した場合は自動切り替え
+            setCurrentEnvironment(alternativeEnv);
+            saveEnvironment(alternativeEnv);
+            await fetchModels(alternativeEnv);
+            setConnectionTested(true);
+          } else {
+            // 両方失敗した場合はダイアログを表示
+            setShowEnvironmentDialog(true);
+          }
         }
-      } catch (err) {
-        setError('LM Studio との接続に失敗しました。');
+      } catch (error) {
+        console.error('Connection initialization failed:', error);
+        setShowEnvironmentDialog(true);
       }
     };
 
-    fetchModels();
-  }, [lmStudioUrl]);
+    initializeConnection();
+  }, [currentEnvironment, connectionTested]);
+
+  // モデル一覧を取得する関数
+  const fetchModels = async (environment: Environment) => {
+    try {
+      const url = getEnvironmentUrl(environment);
+      const response = await fetch(`/api/models?lmStudioUrl=${encodeURIComponent(url)}`);
+      const data = await response.json();
+      
+      if (data.models && data.models.length > 0) {
+        setModels(data.models);
+        setSelectedModel(data.models[0].id);
+        setError('');
+      } else {
+        setError('LM Studio からモデルを読み込めませんでした。LM Studio が起動していることを確認してください。');
+      }
+    } catch (err) {
+      setError('LM Studio との接続に失敗しました。');
+    }
+  };
+
+  // 環境選択ダイアログのハンドラ
+  const handleEnvironmentSelect = async (environment: Environment) => {
+    setCurrentEnvironment(environment);
+    saveEnvironment(environment);
+    setConnectionTested(false); // 再テストのためリセット
+    await fetchModels(environment);
+    setConnectionTested(true);
+  };
 
   // メッセージの最下部にスクロール
   const scrollToBottom = () => {
@@ -360,7 +405,7 @@ export default function Chat() {
         body: JSON.stringify({
           messages: [...messages, userMessage],
           model: selectedModel,
-          lmStudioUrl,
+          lmStudioUrl: getEnvironmentUrl(currentEnvironment),
           proxyEnabled,
           proxyHost,
           proxyPort,
@@ -573,7 +618,7 @@ export default function Chat() {
                     ? 'bg-white text-black'
                     : 'bg-black text-white'
                 }`}>
-                  {getSessionStats().contextTokens.toLocaleString()}/{getModelMaxContext(selectedModel).toLocaleString()}コンテキスト
+                  {getSessionStats().contextTokens.toLocaleString()} / {getModelMaxContext(selectedModel).toLocaleString()} コンテキスト
                 </span>
               </div>
             </div>
@@ -1099,6 +1144,14 @@ export default function Chat() {
       >
         <HiCog6Tooth className="w-6 h-6" />
       </button>
+
+      {/* 環境選択ダイアログ */}
+      <EnvironmentDialog
+        isOpen={showEnvironmentDialog}
+        onClose={() => setShowEnvironmentDialog(false)}
+        onSelect={handleEnvironmentSelect}
+        onTestConnection={testEnvironmentConnection}
+      />
     </div>
   );
 }

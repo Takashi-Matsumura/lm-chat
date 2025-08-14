@@ -2,6 +2,7 @@ import { OpenAI } from 'openai';
 import { NextRequest } from 'next/server';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import { HttpProxyAgent } from 'http-proxy-agent';
+import { resolveLMStudioUrl } from '@/lib/lm-studio-config';
 
 export const runtime = 'nodejs';
 
@@ -22,8 +23,8 @@ export async function POST(req: NextRequest) {
       proxyPassword
     } = body;
 
-    // LM Studio URL を決定 (環境変数またはリクエストから)
-    const baseURL = lmStudioUrl || process.env.LM_STUDIO_URL || 'http://localhost:1234/v1';
+    // LM Studio URL を決定
+    const baseURL = resolveLMStudioUrl(lmStudioUrl);
     
     console.log('Using model:', model);
     console.log('Base URL:', baseURL);
@@ -46,6 +47,8 @@ export async function POST(req: NextRequest) {
     const client = new OpenAI({
       apiKey: 'lm-studio', // LM Studio では任意の文字列で OK
       baseURL,
+      timeout: 30000, // 30秒のタイムアウト
+      maxRetries: 3, // 最大3回リトライ
       // @ts-ignore - Node.js環境でのエージェント設定
       httpAgent,
       httpsAgent,
@@ -124,7 +127,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error('Chat API error:', error);
     return Response.json(
-      { error: 'LM Studio への接続に失敗しました。サーバーが起動していることを確認してください。' },
+      { error: 'LM Studio への接続に失敗しました。サーバが起動していることを確認してください。' },
       { status: 500 }
     );
   }

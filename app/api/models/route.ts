@@ -2,6 +2,7 @@ import { OpenAI } from 'openai';
 import { NextRequest } from 'next/server';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import { HttpProxyAgent } from 'http-proxy-agent';
+import { resolveLMStudioUrl } from '@/lib/lm-studio-config';
 
 export const runtime = 'nodejs';
 
@@ -10,13 +11,15 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const lmStudioUrl = searchParams.get('lmStudioUrl');
 
-    // LM Studio URL を決定 (環境変数またはクエリパラメータから)
-    const baseURL = lmStudioUrl || process.env.LM_STUDIO_URL || 'http://localhost:1234/v1';
+    // LM Studio URL を決定
+    const baseURL = resolveLMStudioUrl(lmStudioUrl);
 
     // OpenAI クライアントを LM Studio 向けに設定
     const client = new OpenAI({
       apiKey: 'lm-studio', // LM Studio では任意の文字列で OK
       baseURL,
+      timeout: 30000, // 30秒のタイムアウト
+      maxRetries: 3, // 最大3回リトライ
     });
 
     // LM Studio からモデル一覧を取得
@@ -40,7 +43,7 @@ export async function GET(req: NextRequest) {
     if (error instanceof Error && error.message.includes('ECONNREFUSED')) {
       return Response.json(
         { 
-          error: 'LM Studio サーバーに接続できません。LM Studio が起動していることを確認してください。',
+          error: 'LM Studio サーバに接続できません。LM Studio が起動していることを確認してください。',
           models: [],
           hasModels: false 
         },
@@ -65,8 +68,8 @@ export async function POST(req: NextRequest) {
     const lmStudioUrl = searchParams.get('lmStudioUrl');
     const { proxyEnabled, proxyHost, proxyPort, proxyUsername, proxyPassword } = await req.json();
 
-    // LM Studio URL を決定 (環境変数またはクエリパラメータから)
-    const baseURL = lmStudioUrl || process.env.LM_STUDIO_URL || 'http://localhost:1234/v1';
+    // LM Studio URL を決定
+    const baseURL = resolveLMStudioUrl(lmStudioUrl);
 
     // プロキシ設定
     let httpAgent, httpsAgent;
@@ -84,6 +87,8 @@ export async function POST(req: NextRequest) {
     const client = new OpenAI({
       apiKey: 'lm-studio', // LM Studio では任意の文字列で OK
       baseURL,
+      timeout: 30000, // 30秒のタイムアウト
+      maxRetries: 3, // 最大3回リトライ
       // @ts-ignore - Node.js環境でのエージェント設定
       httpAgent,
       httpsAgent,
@@ -110,7 +115,7 @@ export async function POST(req: NextRequest) {
     if (error instanceof Error && error.message.includes('ECONNREFUSED')) {
       return Response.json(
         { 
-          error: 'LM Studio サーバーに接続できません。LM Studio が起動していることを確認してください。',
+          error: 'LM Studio サーバに接続できません。LM Studio が起動していることを確認してください。',
           models: [],
           hasModels: false 
         },

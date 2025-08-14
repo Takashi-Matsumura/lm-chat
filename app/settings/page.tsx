@@ -3,14 +3,12 @@
 import React, { useState, useEffect } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import { HiArrowLeft, HiServer, HiCog6Tooth, HiInformationCircle, HiCheckCircle, HiExclamationTriangle, HiGlobeAlt } from 'react-icons/hi2';
+import { getCurrentEnvironment, saveEnvironment, getEnvironmentUrl, testEnvironmentConnection, type Environment } from '@/lib/lm-studio-config';
 
 export default function Settings() {
   const { theme } = useTheme();
-  // Docker環境では環境変数から、通常環境ではlocalhostを使用
-  const defaultUrl = typeof window !== 'undefined' && window.location.hostname !== 'localhost' 
-    ? 'http://host.docker.internal:1234/v1'
-    : 'http://localhost:1234/v1';
-  const [lmStudioUrl, setLmStudioUrl] = useState(defaultUrl);
+  // 環境設定
+  const [currentEnvironment, setCurrentEnvironment] = useState<Environment>(() => getCurrentEnvironment());
   const [temperature, setTemperature] = useState(0.7);
   const [maxTokens, setMaxTokens] = useState(2000);
   const [connectionStatus, setConnectionStatus] = useState<'checking' | 'connected' | 'error'>('checking');
@@ -26,7 +24,6 @@ export default function Settings() {
 
   // 設定を読み込み
   useEffect(() => {
-    const savedUrl = localStorage.getItem('lm-studio-url');
     const savedTemp = localStorage.getItem('lm-temperature');
     const savedTokens = localStorage.getItem('lm-max-tokens');
     
@@ -37,16 +34,6 @@ export default function Settings() {
     const savedProxyUsername = localStorage.getItem('proxy-username');
     const savedProxyPassword = localStorage.getItem('proxy-password');
     
-    // Docker環境では保存されたURLがlocalhostの場合、host.docker.internalに変換
-    if (savedUrl) {
-      if (window.location.hostname !== 'localhost' && savedUrl.includes('localhost:1234')) {
-        const dockerUrl = savedUrl.replace('localhost:1234', 'host.docker.internal:1234');
-        setLmStudioUrl(dockerUrl);
-        localStorage.setItem('lm-studio-url', dockerUrl);
-      } else {
-        setLmStudioUrl(savedUrl);
-      }
-    }
     if (savedTemp) setTemperature(parseFloat(savedTemp));
     if (savedTokens) setMaxTokens(parseInt(savedTokens));
     
@@ -55,7 +42,10 @@ export default function Settings() {
     if (savedProxyPort) setProxyPort(parseInt(savedProxyPort));
     if (savedProxyUsername) setProxyUsername(savedProxyUsername);
     if (savedProxyPassword) setProxyPassword(savedProxyPassword);
-  }, []);
+    
+    // 初期接続テスト
+    testConnection();
+  }, [currentEnvironment]);
 
   // プロキシテスト
   const testProxy = async () => {
@@ -63,7 +53,7 @@ export default function Settings() {
     
     setProxyTestStatus('testing');
     try {
-      // プロキシ設定をサーバーに送信してテスト
+      // プロキシ設定をサーバに送信してテスト
       const response = await fetch('/api/proxy-test', {
         method: 'POST',
         headers: {
@@ -100,7 +90,8 @@ export default function Settings() {
         proxyPassword,
       } : { proxyEnabled: false };
       
-      const response = await fetch(`/api/models?lmStudioUrl=${encodeURIComponent(lmStudioUrl)}`, {
+      const url = getEnvironmentUrl(currentEnvironment);
+      const response = await fetch(`/api/models?lmStudioUrl=${encodeURIComponent(url)}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -120,14 +111,15 @@ export default function Settings() {
     }
   };
 
-  // 接続テストを実行
-  useEffect(() => {
+  // 環境変更ハンドラ
+  const handleEnvironmentChange = (environment: Environment) => {
+    setCurrentEnvironment(environment);
+    saveEnvironment(environment);
     testConnection();
-  }, [lmStudioUrl]);
+  };
 
   // 設定を保存
   const saveSettings = () => {
-    localStorage.setItem('lm-studio-url', lmStudioUrl);
     localStorage.setItem('lm-temperature', temperature.toString());
     localStorage.setItem('lm-max-tokens', maxTokens.toString());
     
@@ -167,7 +159,7 @@ export default function Settings() {
         }`}>
           <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
             <HiServer className="w-5 h-5" />
-            LM Studio サーバー設定
+            LM Studio サーバ設定
           </h2>
           
           <div className="space-y-4">
@@ -175,24 +167,38 @@ export default function Settings() {
               <label className={`block text-sm font-medium mb-2 ${
                 theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
               }`}>
-                サーバーURL
+                実行環境
               </label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={lmStudioUrl}
-                  onChange={(e) => setLmStudioUrl(e.target.value)}
-                  className={`flex-1 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 ${
-                    theme === 'dark'
-                      ? 'bg-gray-700 border-gray-600 text-white'
-                      : 'bg-white border-gray-300 text-gray-900'
-                  }`}
-                />
+              <div className="grid grid-cols-2 gap-3">
                 <button
-                  onClick={testConnection}
-                  className="px-4 py-2 bg-blue-900 text-white rounded-lg hover:bg-blue-800 transition-colors"
+                  onClick={() => handleEnvironmentChange('development')}
+                  className={`p-4 rounded-lg border-2 transition-all text-left ${
+                    currentEnvironment === 'development'
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                      : theme === 'dark'
+                        ? 'border-gray-600 hover:border-blue-500 hover:bg-gray-700'
+                        : 'border-gray-200 hover:border-blue-500 hover:bg-blue-50'
+                  }`}
                 >
-                  接続テスト
+                  <div className="font-medium">開発環境</div>
+                  <div className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+                    localhost:1234
+                  </div>
+                </button>
+                <button
+                  onClick={() => handleEnvironmentChange('container')}
+                  className={`p-4 rounded-lg border-2 transition-all text-left ${
+                    currentEnvironment === 'container'
+                      ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
+                      : theme === 'dark'
+                        ? 'border-gray-600 hover:border-green-500 hover:bg-gray-700'
+                        : 'border-gray-200 hover:border-green-500 hover:bg-green-50'
+                  }`}
+                >
+                  <div className="font-medium">コンテナ環境</div>
+                  <div className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+                    host.docker.internal:1234
+                  </div>
                 </button>
               </div>
             </div>
@@ -247,7 +253,7 @@ export default function Settings() {
               <label htmlFor="proxy-enabled" className={`text-sm font-medium ${
                 theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
               }`}>
-                プロキシサーバーを使用する
+                プロキシサーバを使用する
               </label>
             </div>
 
@@ -378,10 +384,10 @@ export default function Settings() {
               <div className="flex items-start gap-2">
                 <HiInformationCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
                 <div className="text-sm">
-                  <p className="font-medium mb-1">Docker環境での利用について</p>
+                  <p className="font-medium mb-1">環境設定について</p>
                   <p>
-                    DockerコンテナからローカルのLM Studioにアクセスする場合、
-                    LM Studio URLは <code className="bg-gray-200 dark:bg-gray-700 px-1 rounded">host.docker.internal:1234</code> を使用してください。
+                    実行環境を選択することで、LM Studio への接続先が自動設定されます。
+                    起動時に自動判定されますが、こちらで手動変更も可能です。
                     プロキシが必要な場合は上記設定を有効にしてください。
                   </p>
                 </div>

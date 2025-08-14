@@ -10,8 +10,15 @@ COPY package*.json ./
 # 依存関係をインストール（ビルドに必要な開発依存関係も含む）
 RUN npm ci
 
+# 環境変数を設定（ビルド時に使用）
+ENV NEXT_PUBLIC_LM_STUDIO_URL=http://host.docker.internal:1234/v1
+
 # アプリケーションのソースコードをコピー
 COPY . .
+
+# Docker環境用の環境変数ファイルをコピー
+COPY .env.docker .env.production
+COPY .env.docker .env.local
 
 # Next.js アプリケーションをビルド
 RUN npm run build
@@ -34,6 +41,7 @@ EXPOSE 8888
 ENV NODE_ENV=production
 ENV PORT=8888
 ENV HOSTNAME=0.0.0.0
+ENV LM_STUDIO_URL=http://host.docker.internal:1234/v1
 
 # アプリケーションを起動
 CMD ["npm", "start"]
