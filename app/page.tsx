@@ -6,6 +6,7 @@ import { HiPaperAirplane, HiSun, HiMoon, HiChatBubbleLeftRight, HiExclamationTri
 import Markdown from 'markdown-to-jsx';
 import { getCurrentLMStudioUrl, getCurrentEnvironment, saveEnvironment, testEnvironmentConnection, getEnvironmentUrl, type Environment } from '@/lib/lm-studio-config';
 import EnvironmentDialog from './components/EnvironmentDialog';
+import SystemMonitor from './components/SystemMonitor';
 
 interface Message {
   id: string;
@@ -558,6 +559,9 @@ export default function Chat() {
                 ))}
               </select>
             )}
+            
+            {/* システムモニター */}
+            <SystemMonitor />
           </div>
 
           

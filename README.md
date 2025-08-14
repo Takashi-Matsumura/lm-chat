@@ -7,6 +7,7 @@ LM Studioと連携するAIチャットアプリケーション。教育的なメ
 - 🤖 **LM Studio との簡単な連携** - ローカルで実行されるAIモデルと直接通信
 - ⚡ **環境自動判定** - 開発・Docker環境を自動識別してLM Studioに接続
 - 🎛️ **シンプルな環境切り替え** - 「開発環境」「コンテナ環境」の2択で簡単設定
+- 🔍 **Apple Silicon M4 システムモニター** - Performance/Efficiency コア、Unified Memory、GPU使用率をリアルタイム監視
 - 📊 **教育的メタデータ表示** - トークン数、応答時間、生成速度をリアルタイム表示
 - 🎨 **トークン可視化** - テキストをトークン単位で色分け表示（学習用）
 - 🌙 **ダーク/ライトモード** - 快適な視覚体験
@@ -147,6 +148,52 @@ docker-compose up -d
 - 起動時に両方の環境で接続テストを実行
 - 接続に失敗した場合のみ環境選択ダイアログが表示
 - 設定画面で手動での環境切り替えも可能
+
+## システムモニター（Apple Silicon M4対応）
+
+### 🔍 リアルタイム監視機能
+
+ヘッダー部分で以下の情報をリアルタイム監視できます：
+
+| 表示項目 | 説明 | 色分け |
+|---------|------|--------|
+| **CPU** | 全体のCPU使用率 | 🟢 < 50% / 🟡 50-79% / 🔴 ≥ 80% |
+| **RAM** | Unified Memory使用率 | 🟢 < 50% / 🟡 50-79% / 🔴 ≥ 80% |
+| **GPU** | Apple Silicon GPU使用率 | 🟢 < 50% / 🟡 50-79% / 🔴 ≥ 80% |
+
+### 📊 詳細情報ダイアログ
+
+システム詳細ボタン（CPUアイコン）をクリックすると、M4チップの詳細情報を表示：
+
+#### CPU詳細
+- **Performance Cores (4コア)**: 高性能処理用
+- **Efficiency Cores (6コア)**: 省電力処理用
+- 各コア種別の個別使用率
+
+#### Unified Memory詳細
+- **総容量**: 32GB（CPU・GPU共有）
+- **使用状況**: Wired、Active、Inactive、Compressed の内訳
+- **リアルタイム使用率**: 2秒間隔で更新
+
+#### GPU詳細
+- **Apple Silicon GPU**: 統合GPU使用率
+- **Unified Memory共有**: CPU/GPUでメモリを動的共有
+
+### 📱 レスポンシブ対応
+
+| 画面サイズ | 表示内容 |
+|-----------|----------|
+| **スマートフォン** | システム詳細ボタンのみ |
+| **タブレット (1024px+)** | CPU + RAM + 詳細ボタン |
+| **デスクトップ (1280px+)** | CPU + RAM + GPU + 詳細ボタン |
+
+### 🎯 学習効果
+
+この機能により、学習者は以下を実体験できます：
+- **P-core と E-core** の使い分けパターン
+- **AI推論時のリソース消費** を可視化
+- **Unified Memory** の効率的な共有メカニズム
+- **システム負荷の閾値** と色分けアラート
 
 ## 設定項目
 
@@ -299,6 +346,8 @@ npm run dev
 | **AI接続** | OpenAI SDK | ^5.12.2 | LM Studio 互換 API |
 | **プロキシ** | http-proxy-agent | ^7.0.0 | HTTP プロキシサポート |
 | | https-proxy-agent | ^7.0.2 | HTTPS プロキシサポート |
+| **システム監視** | Node.js os | built-in | CPU・メモリ情報取得 |
+| | child_process | built-in | macOS system_profiler 実行 |
 | **開発** | TypeScript | ^5 | 型安全性 |
 | | ESLint | ^9 | コード品質 |
 
@@ -309,7 +358,11 @@ npm run dev
 ├── /api                    # Next.js API Routes
 │   ├── /chat              # チャット機能 (SSE対応)
 │   ├── /models            # モデル一覧取得 (プロキシ対応)
-│   └── /proxy-test        # プロキシ接続テスト
+│   ├── /proxy-test        # プロキシ接続テスト
+│   └── /system-info       # システム監視情報取得
+├── /components             # React Components
+│   ├── EnvironmentDialog.tsx  # 環境選択ダイアログ
+│   └── SystemMonitor.tsx      # M4システムモニター
 ├── /contexts              # React Context
 │   └── ThemeContext.tsx   # ダーク/ライトモード管理
 ├── /settings              # 設定画面
@@ -317,6 +370,9 @@ npm run dev
 ├── globals.css            # グローバルスタイル
 ├── layout.tsx            # アプリケーションレイアウト
 └── page.tsx              # メインチャット画面
+
+/lib
+└── lm-studio-config.ts   # 環境設定ユーティリティ
 
 /docker
 ├── Dockerfile            # 本番用コンテナ設定
@@ -331,12 +387,15 @@ README.md                 # このドキュメント
 
 - **API Routes**: `runtime = 'nodejs'` でプロキシエージェント対応
 - **SSE (Server-Sent Events)**: リアルタイムストリーミングレスポンス
+- **システム監視**: Node.js built-in の `os` と `child_process` を活用
 - **TypeScript**: 厳格な型チェックで開発効率向上
 - **TailwindCSS v4**: 最新のCSS-in-JS アプローチ
 - **Docker**: 本番・開発環境の両方に対応
 
 ### 機能的特徴
 
+- **Apple Silicon M4 専用監視**: Performance/Efficiency コア個別監視
+- **Unified Memory 可視化**: CPU・GPU共有メモリの詳細内訳表示
 - **環境自動判定**: 開発・Docker環境の自動識別と接続
 - **教育的メタデータ**: トークン数、応答時間、生成速度を表示
 - **トークン可視化**: テキストを色分けして表示
