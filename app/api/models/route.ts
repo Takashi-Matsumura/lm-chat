@@ -25,12 +25,15 @@ export async function GET(req: NextRequest) {
     // LM Studio からモデル一覧を取得
     const modelsResponse = await client.models.list();
     
-    const models = modelsResponse.data.map(model => ({
-      id: model.id,
-      name: model.id,
-      object: model.object,
-      created: model.created,
-    }));
+    // 埋め込みモデルを除外してフィルタリング
+    const models = modelsResponse.data
+      .filter(model => !model.id.includes('embedding'))
+      .map(model => ({
+        id: model.id,
+        name: model.id,
+        object: model.object,
+        created: model.created,
+      }));
 
     return Response.json({
       models,
@@ -97,12 +100,15 @@ export async function POST(req: NextRequest) {
     // LM Studio からモデル一覧を取得
     const modelsResponse = await client.models.list();
     
-    const models = modelsResponse.data.map(model => ({
-      id: model.id,
-      name: model.id,
-      object: model.object,
-      created: model.created,
-    }));
+    // 埋め込みモデルを除外してフィルタリング
+    const models = modelsResponse.data
+      .filter(model => !model.id.includes('embedding'))
+      .map(model => ({
+        id: model.id,
+        name: model.id,
+        object: model.object,
+        created: model.created,
+      }));
 
     return Response.json({
       models,

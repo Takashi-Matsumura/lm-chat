@@ -9,8 +9,6 @@ export default function Settings() {
   const { theme } = useTheme();
   // 環境設定
   const [currentEnvironment, setCurrentEnvironment] = useState<Environment>(() => getCurrentEnvironment());
-  const [temperature, setTemperature] = useState(0.7);
-  const [maxTokens, setMaxTokens] = useState(2000);
   const [connectionStatus, setConnectionStatus] = useState<'checking' | 'connected' | 'error'>('checking');
   const [modelCount, setModelCount] = useState(0);
   
@@ -24,18 +22,12 @@ export default function Settings() {
 
   // 設定を読み込み
   useEffect(() => {
-    const savedTemp = localStorage.getItem('lm-temperature');
-    const savedTokens = localStorage.getItem('lm-max-tokens');
-    
     // プロキシ設定を読み込み
     const savedProxyEnabled = localStorage.getItem('proxy-enabled');
     const savedProxyHost = localStorage.getItem('proxy-host');
     const savedProxyPort = localStorage.getItem('proxy-port');
     const savedProxyUsername = localStorage.getItem('proxy-username');
     const savedProxyPassword = localStorage.getItem('proxy-password');
-    
-    if (savedTemp) setTemperature(parseFloat(savedTemp));
-    if (savedTokens) setMaxTokens(parseInt(savedTokens));
     
     if (savedProxyEnabled) setProxyEnabled(savedProxyEnabled === 'true');
     if (savedProxyHost) setProxyHost(savedProxyHost);
@@ -120,9 +112,6 @@ export default function Settings() {
 
   // 設定を保存
   const saveSettings = () => {
-    localStorage.setItem('lm-temperature', temperature.toString());
-    localStorage.setItem('lm-max-tokens', maxTokens.toString());
-    
     // プロキシ設定を保存
     localStorage.setItem('proxy-enabled', proxyEnabled.toString());
     localStorage.setItem('proxy-host', proxyHost);
@@ -135,24 +124,32 @@ export default function Settings() {
 
   return (
     <div className={`min-h-screen ${theme === 'dark' ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
-      {/* ヘッダー */}
-      <header className={`p-4 border-b ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-        <div className="flex items-center gap-4">
+      {/* ヘッダー（固定） */}
+      <header className={`fixed top-0 left-0 right-0 z-50 p-4 border-b ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => window.location.href = '/'}
+              className={`p-2 rounded-lg transition-colors ${
+                theme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-100'
+              }`}
+            >
+              <HiArrowLeft className="w-5 h-5" />
+            </button>
+            <HiCog6Tooth className="w-6 h-6 text-blue-900" />
+            <h1 className="text-xl font-semibold">設定</h1>
+          </div>
           <button
-            onClick={() => window.location.href = '/'}
-            className={`p-2 rounded-lg transition-colors ${
-              theme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-100'
-            }`}
+            onClick={saveSettings}
+            className="px-4 py-2 bg-blue-900 text-white rounded-lg hover:bg-blue-800 transition-colors font-medium"
           >
-            <HiArrowLeft className="w-5 h-5" />
+            設定を保存
           </button>
-          <HiCog6Tooth className="w-6 h-6 text-blue-900" />
-          <h1 className="text-xl font-semibold">設定</h1>
         </div>
       </header>
 
-      {/* 設定コンテンツ */}
-      <div className="max-w-4xl mx-auto p-6 space-y-6">
+      {/* 設定コンテンツ（ヘッダー分のパディング追加） */}
+      <div className="max-w-4xl mx-auto p-6 space-y-6 pt-20">
         {/* LM Studio接続設定 */}
         <div className={`p-6 rounded-lg border ${
           theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
@@ -396,60 +393,6 @@ export default function Settings() {
           </div>
         </div>
 
-        {/* LLMパラメータ設定 */}
-        <div className={`p-6 rounded-lg border ${
-          theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
-        }`}>
-          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <HiCog6Tooth className="w-5 h-5" />
-            デフォルトLLMパラメータ
-          </h2>
-          
-          <div className="space-y-4">
-            <div>
-              <label className={`block text-sm font-medium mb-2 ${
-                theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
-              }`}>
-                Temperature: {temperature}
-              </label>
-              <input
-                type="range"
-                min="0.1"
-                max="1.0"
-                step="0.1"
-                value={temperature}
-                onChange={(e) => setTemperature(parseFloat(e.target.value))}
-                className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-              />
-              <div className="flex justify-between text-xs text-gray-500 mt-1">
-                <span>一貫性重視 (0.1)</span>
-                <span>創造性重視 (1.0)</span>
-              </div>
-            </div>
-
-            <div>
-              <label className={`block text-sm font-medium mb-2 ${
-                theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
-              }`}>
-                最大トークン数: {maxTokens}
-              </label>
-              <input
-                type="range"
-                min="500"
-                max="4000"
-                step="100"
-                value={maxTokens}
-                onChange={(e) => setMaxTokens(parseInt(e.target.value))}
-                className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-              />
-              <div className="flex justify-between text-xs text-gray-500 mt-1">
-                <span>短い回答 (500)</span>
-                <span>長い回答 (4000)</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
         {/* アプリ情報 */}
         <div className={`p-6 rounded-lg border ${
           theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
@@ -468,15 +411,6 @@ export default function Settings() {
           </div>
         </div>
 
-        {/* 保存ボタン */}
-        <div className="flex justify-end">
-          <button
-            onClick={saveSettings}
-            className="px-6 py-3 bg-blue-900 text-white rounded-full hover:bg-blue-800 transition-colors"
-          >
-            設定を保存
-          </button>
-        </div>
       </div>
     </div>
   );

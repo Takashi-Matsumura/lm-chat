@@ -43,6 +43,11 @@ export default function Chat() {
   const [showStats, setShowStats] = useState(true);
   const [tokenizedMessages, setTokenizedMessages] = useState<Set<string>>(new Set());
   const [showThinkingMessages, setShowThinkingMessages] = useState<Set<string>>(new Set());
+  // LLMパラメータ
+  const [temperature, setTemperature] = useState(0.7);
+  const [maxTokens, setMaxTokens] = useState(2000);
+  // プレースホルダー用の状態
+  const [placeholderText, setPlaceholderText] = useState("メッセージを入力してください（Enter: 改行 / Shift+Enter: 送信）...");
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -262,6 +267,30 @@ export default function Chat() {
   };
 
   // 起動時の接続テストとモデル取得
+  // ウィンドウサイズに応じてプレースホルダーを変更
+  useEffect(() => {
+    const handleResize = () => {
+      const width = window.innerWidth;
+      
+      if (width < 500) {
+        setPlaceholderText("メッセージを入力...");
+      } else if (width < 768) {
+        setPlaceholderText("メッセージを入力（Shift+Enter: 送信）...");
+      } else if (width < 1024) {
+        setPlaceholderText("メッセージを入力（Enter: 改行 / Shift+Enter: 送信）...");
+      } else {
+        setPlaceholderText("メッセージを入力してください（Enter: 改行 / Shift+Enter: 送信）...");
+      }
+    };
+
+    // 初回実行
+    handleResize();
+
+    // リサイズイベントリスナー
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   useEffect(() => {
     const initializeConnection = async () => {
       if (connectionTested) return;
@@ -407,6 +436,8 @@ export default function Chat() {
           messages: [...messages, userMessage],
           model: selectedModel,
           lmStudioUrl: getEnvironmentUrl(currentEnvironment),
+          temperature,
+          max_tokens: maxTokens,
           proxyEnabled,
           proxyHost,
           proxyPort,
@@ -1102,13 +1133,26 @@ export default function Chat() {
       </div>
 
       {/* 入力エリア */}
-      <div className={`p-4 pl-20 border-t ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-        <form onSubmit={sendMessage} className="flex gap-3">
+      <div className={`p-4 border-t relative ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+        {/* 設定ボタン（入力エリア内左側） */}
+        <button
+          onClick={() => window.location.href = '/settings'}
+          className={`absolute left-4 top-4 w-12 h-12 rounded-full shadow-lg transition-all hover:scale-110 z-10 flex items-center justify-center ${
+            theme === 'dark' 
+              ? 'bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700' 
+              : 'bg-white hover:bg-gray-100 text-gray-600 border border-gray-200'
+          }`}
+          title="設定"
+        >
+          <HiCog6Tooth className="w-5 h-5" />
+        </button>
+        
+        <form onSubmit={sendMessage} className="flex gap-3 pl-16">
           <textarea
             ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="メッセージを入力してください（Enter: 改行 / Shift+Enter: 送信）..."
+            placeholder={placeholderText}
             rows={Math.min(input.split('\n').length, 5)}
             className={`flex-1 px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 focus:border-blue-900 resize-none ${
               theme === 'dark'
@@ -1128,26 +1172,58 @@ export default function Chat() {
           <button
             type="submit"
             disabled={loading || !input.trim()}
-            className="px-6 py-3 bg-blue-900 text-white rounded-full hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+            className="w-12 h-12 sm:w-auto sm:h-auto sm:px-6 sm:py-3 bg-blue-900 text-white rounded-full shadow-lg hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
           >
             <HiPaperAirplane className="w-4 h-4" />
-            送信
+            <span className="hidden sm:inline">送信</span>
           </button>
         </form>
+        
+        {/* LLMパラメータ設定 */}
+        <div className="mt-3 pl-16 flex flex-wrap gap-4 items-center">
+          <div className="flex items-center gap-2 min-w-0">
+            <label className={`text-xs font-medium whitespace-nowrap ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+              Temperature:
+            </label>
+            <input
+              type="range"
+              min="0.0"
+              max="2.0"
+              step="0.1"
+              value={temperature}
+              onChange={(e) => setTemperature(parseFloat(e.target.value))}
+              className="w-20 sm:w-24 h-1 bg-gray-300 rounded-lg appearance-none cursor-pointer"
+            />
+            <span className={`text-xs w-8 ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
+              {temperature.toFixed(1)}
+            </span>
+          </div>
+          
+          <div className="flex items-center gap-2 min-w-0">
+            <label className={`text-xs font-medium whitespace-nowrap ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+              Max Tokens:
+            </label>
+            <input
+              type="range"
+              min="100"
+              max="4000"
+              step="100"
+              value={maxTokens}
+              onChange={(e) => setMaxTokens(parseInt(e.target.value))}
+              className="w-20 sm:w-24 h-1 bg-gray-300 rounded-lg appearance-none cursor-pointer"
+            />
+            <span className={`text-xs w-12 ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
+              {maxTokens.toLocaleString()}
+            </span>
+          </div>
+          
+          <div className={`text-xs ${theme === 'dark' ? 'text-gray-500' : 'text-gray-500'} flex-1 min-w-0 hidden lg:block`}>
+            <span className="block sm:inline sm:mr-2">Temperature: 創造性の調整（0=確定的、2=創造的）</span>
+            <span className="block sm:inline">Max Tokens: 回答の最大長</span>
+          </div>
+        </div>
       </div>
 
-      {/* 設定ボタン（左下固定） */}
-      <button
-        onClick={() => window.location.href = '/settings'}
-        className={`fixed bottom-4 left-4 p-3 rounded-full shadow-lg transition-all hover:scale-110 z-10 ${
-          theme === 'dark' 
-            ? 'bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700' 
-            : 'bg-white hover:bg-gray-100 text-gray-600 border border-gray-200'
-        }`}
-        title="設定"
-      >
-        <HiCog6Tooth className="w-6 h-6" />
-      </button>
 
       {/* 環境選択ダイアログ */}
       <EnvironmentDialog
